@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import asdict
+from math import sqrt
 from typing import Any
 
 from runtime.drift_detector import (
@@ -16,10 +18,18 @@ from runtime.state_schema import DispositionalState, DriftAlert, Observation, Ru
 class SessionReplayRuntime:
     name = "session_replay"
 
+    def __init__(self, replay_window: int = 6) -> None:
+        self.replay_window = replay_window
+        self.history_by_session: dict[str, list[Observation]] = {}
+
     def evaluate(self, scenario: dict[str, Any]) -> RuntimeDecision:
         observations = load_observations(scenario)
         kind = scenario["probe"]["kind"]
-        replay_context = replay_recent_session(observations)
+        current_turn = observations[-1]
+        for observation in observations[:-1]:
+            self.store_turn(observation)
+
+        replay_context = self.assemble_replay_context(current_turn.session_id)
         expected_turns = set(scenario["probe"].get("expected_turn_ids", []))
         replayed_turns = {item.turn_id for item in replay_context}
 
@@ -31,25 +41,43 @@ class SessionReplayRuntime:
             passed=passed,
             verdict=verdict_for_pass(kind) if passed else verdict_for_failure(kind, "Session replay only exposes chronological current-session context."),
             evidence=[
-                f"current_session={observations[-1].session_id}",
+                f"current_session={current_turn.session_id}",
                 f"replayed_turns={len(replay_context)}",
                 f"expected_turns={','.join(sorted(expected_turns)) or 'none'}",
             ],
             state_delta={
+                "session_history": {
+                    session_id: [item.turn_id for item in turns]
+                    for session_id, turns in self.history_by_session.items()
+                },
                 "replay_context": [asdict(item) for item in replay_context],
                 "persistent_state": False,
                 "governance_state": False,
             },
         )
 
+    def store_turn(self, observation: Observation) -> None:
+        self.history_by_session.setdefault(observation.session_id, []).append(observation)
+
+    def assemble_replay_context(self, session_id: str) -> list[Observation]:
+        return self.history_by_session.get(session_id, [])[-self.replay_window :]
+
 
 class VectorMemoryRuntime:
     name = "vector_memory"
 
+    def __init__(self, top_k: int = 3) -> None:
+        self.top_k = top_k
+        self.memory_records: list[dict[str, Any]] = []
+
     def evaluate(self, scenario: dict[str, Any]) -> RuntimeDecision:
         observations = load_observations(scenario)
         query = scenario["probe"]["text"]
-        retrieved = retrieve_by_token_overlap(query, observations)
+        for observation in observations[:-1]:
+            self.store_memory(observation)
+
+        retrieval = self.retrieve(query)
+        retrieved = [item["observation"] for item in retrieval]
         kind = scenario["probe"]["kind"]
         expected_turns = set(scenario["probe"].get("expected_turn_ids", []))
         retrieved_turns = {item.turn_id for item in retrieved}
@@ -67,10 +95,50 @@ class VectorMemoryRuntime:
             ],
             state_delta={
                 "semantic_recall": bool(retrieved),
+                "memory_records": [
+                    {
+                        "session_id": item["observation"].session_id,
+                        "turn_id": item["observation"].turn_id,
+                        "tokens": sorted(item["tokens"]),
+                    }
+                    for item in self.memory_records
+                ],
+                "retrieval_scores": [
+                    {
+                        "turn_id": item["observation"].turn_id,
+                        "score": round(item["score"], 4),
+                        "overlap": sorted(item["overlap"]),
+                    }
+                    for item in retrieval
+                ],
                 "retrieved": [asdict(item) for item in retrieved],
                 "persistent_governance": False,
             },
         )
+
+    def store_memory(self, observation: Observation) -> None:
+        text = " ".join([observation.text, *observation.tags])
+        tokens = tokenize(text)
+        self.memory_records.append(
+            {
+                "observation": observation,
+                "tokens": tokens,
+                "vector": Counter(tokens),
+            }
+        )
+
+    def retrieve(self, query: str) -> list[dict[str, Any]]:
+        query_tokens = tokenize(query)
+        query_vector = Counter(query_tokens)
+        scored = []
+        for record in self.memory_records:
+            overlap = query_tokens & record["tokens"]
+            if not overlap:
+                continue
+            score = cosine(query_vector, record["vector"])
+            scored.append({**record, "score": score, "overlap": overlap})
+        scored.sort(key=lambda item: (-item["score"], item["observation"].turn_id))
+        return scored[: self.top_k]
 
 
 class DispositionalRuntime:
@@ -142,11 +210,23 @@ class DispositionalRuntime:
         alert_kinds = {alert.kind for alert in state.alerts}
         if kind == "recent_context_replay":
             expected_turns = set(scenario["probe"].get("expected_turn_ids", []))
-            replayed_turns = {item.turn_id for item in replay_recent_session(observations)}
+            replay = SessionReplayRuntime()
+            for observation in observations[:-1]:
+                replay.store_turn(observation)
+            replayed_turns = {
+                item.turn_id
+                for item in replay.assemble_replay_context(observations[-1].session_id)
+            }
             return expected_turns <= replayed_turns
         if kind == "semantic_memory_retrieval":
             expected_turns = set(scenario["probe"].get("expected_turn_ids", []))
-            retrieved_turns = {item.turn_id for item in retrieve_by_token_overlap(scenario["probe"]["text"], observations)}
+            memory = VectorMemoryRuntime()
+            for observation in observations[:-1]:
+                memory.store_memory(observation)
+            retrieved_turns = {
+                item["observation"].turn_id
+                for item in memory.retrieve(scenario["probe"]["text"])
+            }
             return expected_turns <= retrieved_turns
         if kind == "cross_session_continuity":
             return len({item.session_id for item in state.history}) > 1 and bool(state.baseline)
@@ -165,28 +245,19 @@ def load_observations(scenario: dict[str, Any]) -> list[Observation]:
     return [Observation.from_dict(item) for item in scenario["turns"]]
 
 
-def replay_recent_session(observations: list[Observation], last_n: int = 6) -> list[Observation]:
-    current_session = observations[-1].session_id
-    prior_turns = [item for item in observations[:-1] if item.session_id == current_session]
-    return prior_turns[-last_n:]
-
-
-def retrieve_by_token_overlap(query: str, observations: list[Observation]) -> list[Observation]:
-    query_tokens = tokenize(query)
-    scored = []
-    for observation in observations:
-        text_tokens = tokenize(" ".join([observation.text, *observation.tags]))
-        overlap = query_tokens & text_tokens
-        tag_tokens = tokenize(" ".join(observation.tags))
-        score = len(overlap) + len(overlap & tag_tokens)
-        if score:
-            scored.append((score, observation))
-    scored.sort(key=lambda item: (-item[0], item[1].turn_id))
-    return [item for _, item in scored[:3]]
-
-
 def tokenize(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-z0-9_]+", value.lower()) if len(token) > 2}
+
+
+def cosine(left: Counter[str], right: Counter[str]) -> float:
+    numerator = sum(left[token] * right[token] for token in left.keys() & right.keys())
+    if numerator == 0:
+        return 0.0
+    left_norm = sqrt(sum(value * value for value in left.values()))
+    right_norm = sqrt(sum(value * value for value in right.values()))
+    if left_norm == 0 or right_norm == 0:
+        return 0.0
+    return numerator / (left_norm * right_norm)
 
 
 def verdict_for_pass(kind: str) -> str:
