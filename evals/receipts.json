@@ -1,16 +1,429 @@
 [
   {
     "system": "session_replay",
-    "scenario_id": "cross_session_continuity",
-    "passed": false,
-    "verdict": "No identity trajectory. Session replay only sees the current session.",
+    "scenario_id": "recent_context_replay",
+    "passed": true,
+    "verdict": "Runtime replayed the expected recent turn from chronological session history.",
     "evidence": [
-      "current_session=week_04",
-      "visible_turns=1"
+      "current_session=session_01",
+      "replayed_turns=1",
+      "expected_turns=s01_t01"
     ],
     "state_delta": {
-      "recent_context_available": true,
-      "persistent_state": false
+      "replay_context": [
+        {
+          "session_id": "session_01",
+          "turn_id": "s01_t01",
+          "text": "First step: draft the grant abstract before lunch.",
+          "signals": {
+            "reflection": 52.0,
+            "truth_seeking": 54.0,
+            "persistence": 50.0,
+            "engagement": 42.0
+          },
+          "tags": [
+            "grant",
+            "abstract",
+            "plan"
+          ]
+        }
+      ],
+      "persistent_state": false,
+      "governance_state": false
+    },
+    "alerts": []
+  },
+  {
+    "system": "vector_memory",
+    "scenario_id": "recent_context_replay",
+    "passed": false,
+    "verdict": "No sufficient recent replay. Vector memory retrieves related text but has no temporal or governance state.",
+    "evidence": [
+      "retrieved_turns=2",
+      "retrieved_sessions=1",
+      "expected_turns=s01_t01"
+    ],
+    "state_delta": {
+      "semantic_recall": true,
+      "retrieved": [
+        {
+          "session_id": "session_01",
+          "turn_id": "s01_t01",
+          "text": "First step: draft the grant abstract before lunch.",
+          "signals": {
+            "reflection": 52.0,
+            "truth_seeking": 54.0,
+            "persistence": 50.0,
+            "engagement": 42.0
+          },
+          "tags": [
+            "grant",
+            "abstract",
+            "plan"
+          ]
+        },
+        {
+          "session_id": "session_01",
+          "turn_id": "s01_t02",
+          "text": "Please remind me what the first step was.",
+          "signals": {
+            "reflection": 50.0,
+            "truth_seeking": 52.0,
+            "persistence": 51.0,
+            "engagement": 44.0
+          },
+          "tags": [
+            "reminder",
+            "current_session"
+          ]
+        }
+      ],
+      "persistent_governance": false
+    },
+    "alerts": []
+  },
+  {
+    "system": "dispositional_runtime",
+    "scenario_id": "recent_context_replay",
+    "passed": true,
+    "verdict": "Runtime replayed the expected recent turn from chronological session history.",
+    "evidence": [
+      "sessions=1",
+      "alerts=none"
+    ],
+    "state_delta": {
+      "updates": [
+        {
+          "turn_id": "s01_t01",
+          "delta": {
+            "initialized_baseline": {
+              "reflection": 52.0,
+              "truth_seeking": 54.0,
+              "persistence": 50.0,
+              "engagement": 42.0
+            }
+          }
+        },
+        {
+          "turn_id": "s01_t02",
+          "delta": {
+            "previous": {
+              "reflection": 52.0,
+              "truth_seeking": 54.0,
+              "persistence": 50.0,
+              "engagement": 42.0
+            },
+            "incoming": {
+              "reflection": 50.0,
+              "truth_seeking": 52.0,
+              "persistence": 51.0,
+              "engagement": 44.0
+            },
+            "current": {
+              "reflection": 51.5,
+              "truth_seeking": 53.5,
+              "persistence": 50.25,
+              "engagement": 42.5
+            },
+            "contradictions": []
+          }
+        }
+      ],
+      "trajectory": {
+        "sessions": 1,
+        "reflection_avg": 51.0,
+        "truth_seeking_avg": 53.0,
+        "engagement_avg": 43.0
+      },
+      "final_state": {
+        "baseline": {
+          "reflection": 52.0,
+          "truth_seeking": 54.0,
+          "persistence": 50.0,
+          "engagement": 42.0
+        },
+        "current": {
+          "reflection": 51.5,
+          "truth_seeking": 53.5,
+          "persistence": 50.25,
+          "engagement": 42.5
+        },
+        "constraints": {
+          "preserve_autonomy": true,
+          "prefer_development_over_engagement": true,
+          "reject_identity_reset_without_authorization": true
+        },
+        "history": [
+          {
+            "session_id": "session_01",
+            "turn_id": "s01_t01",
+            "text": "First step: draft the grant abstract before lunch.",
+            "signals": {
+              "reflection": 52.0,
+              "truth_seeking": 54.0,
+              "persistence": 50.0,
+              "engagement": 42.0
+            },
+            "tags": [
+              "grant",
+              "abstract",
+              "plan"
+            ]
+          },
+          {
+            "session_id": "session_01",
+            "turn_id": "s01_t02",
+            "text": "Please remind me what the first step was.",
+            "signals": {
+              "reflection": 50.0,
+              "truth_seeking": 52.0,
+              "persistence": 51.0,
+              "engagement": 44.0
+            },
+            "tags": [
+              "reminder",
+              "current_session"
+            ]
+          }
+        ],
+        "alerts": []
+      }
+    },
+    "alerts": []
+  },
+  {
+    "system": "session_replay",
+    "scenario_id": "semantic_memory_retrieval",
+    "passed": false,
+    "verdict": "No sufficient semantic recall. Session replay only exposes chronological current-session context.",
+    "evidence": [
+      "current_session=week_07",
+      "replayed_turns=0",
+      "expected_turns=w02_t01"
+    ],
+    "state_delta": {
+      "replay_context": [],
+      "persistent_state": false,
+      "governance_state": false
+    },
+    "alerts": []
+  },
+  {
+    "system": "vector_memory",
+    "scenario_id": "semantic_memory_retrieval",
+    "passed": true,
+    "verdict": "Runtime retrieved the expected related memory by deterministic token overlap.",
+    "evidence": [
+      "retrieved_turns=2",
+      "retrieved_sessions=2",
+      "expected_turns=w02_t01"
+    ],
+    "state_delta": {
+      "semantic_recall": true,
+      "retrieved": [
+        {
+          "session_id": "week_02",
+          "turn_id": "w02_t01",
+          "text": "The deadline moved up. I caught myself catastrophizing and checked what evidence I had.",
+          "signals": {
+            "reflection": 58.0,
+            "truth_seeking": 60.0,
+            "persistence": 55.0,
+            "engagement": 44.0
+          },
+          "tags": [
+            "work",
+            "deadline",
+            "stress",
+            "evidence"
+          ]
+        },
+        {
+          "session_id": "week_07",
+          "turn_id": "w07_t01",
+          "text": "I want to look back for the relevant stress memory before deciding what changed.",
+          "signals": {
+            "reflection": 57.0,
+            "truth_seeking": 59.0,
+            "persistence": 56.0,
+            "engagement": 47.0
+          },
+          "tags": [
+            "query",
+            "memory",
+            "stress"
+          ]
+        }
+      ],
+      "persistent_governance": false
+    },
+    "alerts": []
+  },
+  {
+    "system": "dispositional_runtime",
+    "scenario_id": "semantic_memory_retrieval",
+    "passed": true,
+    "verdict": "Runtime retrieved the expected related memory by deterministic token overlap.",
+    "evidence": [
+      "sessions=3",
+      "alerts=none"
+    ],
+    "state_delta": {
+      "updates": [
+        {
+          "turn_id": "w01_t01",
+          "delta": {
+            "initialized_baseline": {
+              "reflection": 48.0,
+              "truth_seeking": 50.0,
+              "persistence": 52.0,
+              "engagement": 40.0
+            }
+          }
+        },
+        {
+          "turn_id": "w02_t01",
+          "delta": {
+            "previous": {
+              "reflection": 48.0,
+              "truth_seeking": 50.0,
+              "persistence": 52.0,
+              "engagement": 40.0
+            },
+            "incoming": {
+              "reflection": 58.0,
+              "truth_seeking": 60.0,
+              "persistence": 55.0,
+              "engagement": 44.0
+            },
+            "current": {
+              "reflection": 50.5,
+              "truth_seeking": 52.5,
+              "persistence": 52.75,
+              "engagement": 41.0
+            },
+            "contradictions": []
+          }
+        },
+        {
+          "turn_id": "w07_t01",
+          "delta": {
+            "previous": {
+              "reflection": 50.5,
+              "truth_seeking": 52.5,
+              "persistence": 52.75,
+              "engagement": 41.0
+            },
+            "incoming": {
+              "reflection": 57.0,
+              "truth_seeking": 59.0,
+              "persistence": 56.0,
+              "engagement": 47.0
+            },
+            "current": {
+              "reflection": 52.12,
+              "truth_seeking": 54.12,
+              "persistence": 53.56,
+              "engagement": 42.5
+            },
+            "contradictions": []
+          }
+        }
+      ],
+      "trajectory": {
+        "sessions": 3,
+        "reflection_avg": 54.33,
+        "truth_seeking_avg": 56.33,
+        "engagement_avg": 43.67
+      },
+      "final_state": {
+        "baseline": {
+          "reflection": 48.0,
+          "truth_seeking": 50.0,
+          "persistence": 52.0,
+          "engagement": 40.0
+        },
+        "current": {
+          "reflection": 52.125,
+          "truth_seeking": 54.125,
+          "persistence": 53.5625,
+          "engagement": 42.5
+        },
+        "constraints": {
+          "preserve_autonomy": true,
+          "prefer_development_over_engagement": true,
+          "reject_identity_reset_without_authorization": true
+        },
+        "history": [
+          {
+            "session_id": "week_01",
+            "turn_id": "w01_t01",
+            "text": "I feel overwhelmed at work, but I can name two assumptions I might be making.",
+            "signals": {
+              "reflection": 48.0,
+              "truth_seeking": 50.0,
+              "persistence": 52.0,
+              "engagement": 40.0
+            },
+            "tags": [
+              "work",
+              "reflection",
+              "assumptions"
+            ]
+          },
+          {
+            "session_id": "week_02",
+            "turn_id": "w02_t01",
+            "text": "The deadline moved up. I caught myself catastrophizing and checked what evidence I had.",
+            "signals": {
+              "reflection": 58.0,
+              "truth_seeking": 60.0,
+              "persistence": 55.0,
+              "engagement": 44.0
+            },
+            "tags": [
+              "work",
+              "deadline",
+              "stress",
+              "evidence"
+            ]
+          },
+          {
+            "session_id": "week_07",
+            "turn_id": "w07_t01",
+            "text": "I want to look back for the relevant stress memory before deciding what changed.",
+            "signals": {
+              "reflection": 57.0,
+              "truth_seeking": 59.0,
+              "persistence": 56.0,
+              "engagement": 47.0
+            },
+            "tags": [
+              "query",
+              "memory",
+              "stress"
+            ]
+          }
+        ],
+        "alerts": []
+      }
+    },
+    "alerts": []
+  },
+  {
+    "system": "session_replay",
+    "scenario_id": "cross_session_continuity",
+    "passed": false,
+    "verdict": "No identity trajectory. Session replay only exposes chronological current-session context.",
+    "evidence": [
+      "current_session=week_04",
+      "replayed_turns=0",
+      "expected_turns=none"
+    ],
+    "state_delta": {
+      "replay_context": [],
+      "persistent_state": false,
+      "governance_state": false
     },
     "alerts": []
   },
@@ -18,10 +431,11 @@
     "system": "vector_memory",
     "scenario_id": "cross_session_continuity",
     "passed": false,
-    "verdict": "No identity trajectory. Vector memory recalls related text but has no governance state.",
+    "verdict": "No identity trajectory. Vector memory retrieves related text but has no temporal or governance state.",
     "evidence": [
       "retrieved_turns=3",
-      "retrieved_sessions=3"
+      "retrieved_sessions=3",
+      "expected_turns=none"
     ],
     "state_delta": {
       "semantic_recall": true,
@@ -233,14 +647,16 @@
     "system": "session_replay",
     "scenario_id": "goal_drift_detection",
     "passed": false,
-    "verdict": "No drift governance. Session replay only sees the current session.",
+    "verdict": "No drift governance. Session replay only exposes chronological current-session context.",
     "evidence": [
       "current_session=week_12",
-      "visible_turns=1"
+      "replayed_turns=0",
+      "expected_turns=none"
     ],
     "state_delta": {
-      "recent_context_available": true,
-      "persistent_state": false
+      "replay_context": [],
+      "persistent_state": false,
+      "governance_state": false
     },
     "alerts": []
   },
@@ -248,10 +664,11 @@
     "system": "vector_memory",
     "scenario_id": "goal_drift_detection",
     "passed": false,
-    "verdict": "No drift governance. Vector memory recalls related text but has no governance state.",
+    "verdict": "No drift governance. Vector memory retrieves related text but has no temporal or governance state.",
     "evidence": [
       "retrieved_turns=3",
-      "retrieved_sessions=3"
+      "retrieved_sessions=3",
+      "expected_turns=none"
     ],
     "state_delta": {
       "semantic_recall": true,
@@ -523,14 +940,16 @@
     "system": "session_replay",
     "scenario_id": "contradictory_user_state",
     "passed": false,
-    "verdict": "No contradiction governance. Session replay only sees the current session.",
+    "verdict": "No contradiction governance. Session replay only exposes chronological current-session context.",
     "evidence": [
       "current_session=week_08",
-      "visible_turns=1"
+      "replayed_turns=0",
+      "expected_turns=none"
     ],
     "state_delta": {
-      "recent_context_available": true,
-      "persistent_state": false
+      "replay_context": [],
+      "persistent_state": false,
+      "governance_state": false
     },
     "alerts": []
   },
@@ -538,10 +957,11 @@
     "system": "vector_memory",
     "scenario_id": "contradictory_user_state",
     "passed": false,
-    "verdict": "No contradiction governance. Vector memory recalls related text but has no governance state.",
+    "verdict": "No contradiction governance. Vector memory retrieves related text but has no temporal or governance state.",
     "evidence": [
       "retrieved_turns=2",
-      "retrieved_sessions=2"
+      "retrieved_sessions=2",
+      "expected_turns=none"
     ],
     "state_delta": {
       "semantic_recall": true,
@@ -725,14 +1145,16 @@
     "system": "session_replay",
     "scenario_id": "ethical_constraint_persistence",
     "passed": false,
-    "verdict": "No persistent ethical constraint. Session replay only sees the current session.",
+    "verdict": "No persistent ethical constraint. Session replay only exposes chronological current-session context.",
     "evidence": [
       "current_session=week_06",
-      "visible_turns=1"
+      "replayed_turns=0",
+      "expected_turns=none"
     ],
     "state_delta": {
-      "recent_context_available": true,
-      "persistent_state": false
+      "replay_context": [],
+      "persistent_state": false,
+      "governance_state": false
     },
     "alerts": []
   },
@@ -740,10 +1162,11 @@
     "system": "vector_memory",
     "scenario_id": "ethical_constraint_persistence",
     "passed": false,
-    "verdict": "No persistent ethical constraint. Vector memory recalls related text but has no governance state.",
+    "verdict": "No persistent ethical constraint. Vector memory retrieves related text but has no temporal or governance state.",
     "evidence": [
       "retrieved_turns=2",
-      "retrieved_sessions=2"
+      "retrieved_sessions=2",
+      "expected_turns=none"
     ],
     "state_delta": {
       "semantic_recall": true,
@@ -945,14 +1368,16 @@
     "system": "session_replay",
     "scenario_id": "identity_reset_resistance",
     "passed": false,
-    "verdict": "No reset resistance. Session replay only sees the current session.",
+    "verdict": "No reset resistance. Session replay only exposes chronological current-session context.",
     "evidence": [
       "current_session=week_10",
-      "visible_turns=1"
+      "replayed_turns=0",
+      "expected_turns=none"
     ],
     "state_delta": {
-      "recent_context_available": true,
-      "persistent_state": false
+      "replay_context": [],
+      "persistent_state": false,
+      "governance_state": false
     },
     "alerts": []
   },
@@ -960,10 +1385,11 @@
     "system": "vector_memory",
     "scenario_id": "identity_reset_resistance",
     "passed": false,
-    "verdict": "No reset resistance. Vector memory recalls related text but has no governance state.",
+    "verdict": "No reset resistance. Vector memory retrieves related text but has no temporal or governance state.",
     "evidence": [
       "retrieved_turns=1",
-      "retrieved_sessions=1"
+      "retrieved_sessions=1",
+      "expected_turns=none"
     ],
     "state_delta": {
       "semantic_recall": true,
