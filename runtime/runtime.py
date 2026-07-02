@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import re
-from collections import Counter
 from dataclasses import asdict
-from math import sqrt
 from typing import Any
 
 from runtime.drift_detector import (
-    detect_cumulative_goal_drift,
+    CumulativeDriftDetector,
     detect_ethical_pressure,
     detect_identity_reset_request,
     summarize_trajectory,
 )
+from runtime.privacy import LocalEncryptedStateStore
+from runtime.prompting import StatelessPromptAssembler
 from runtime.state_schema import DispositionalState, DriftAlert, Observation, RuntimeDecision
+from runtime.vector_index import InMemoryVectorIndex
 
 
 class SessionReplayRuntime:
@@ -68,7 +69,7 @@ class VectorMemoryRuntime:
 
     def __init__(self, top_k: int = 3) -> None:
         self.top_k = top_k
-        self.memory_records: list[dict[str, Any]] = []
+        self.index = InMemoryVectorIndex(top_k=top_k)
 
     def evaluate(self, scenario: dict[str, Any]) -> RuntimeDecision:
         observations = load_observations(scenario)
@@ -97,11 +98,11 @@ class VectorMemoryRuntime:
                 "semantic_recall": bool(retrieved),
                 "memory_records": [
                     {
-                        "session_id": item["observation"].session_id,
-                        "turn_id": item["observation"].turn_id,
-                        "tokens": sorted(item["tokens"]),
+                        "session_id": item.observation.session_id,
+                        "turn_id": item.observation.turn_id,
+                        "tokens": sorted(item.tokens),
                     }
-                    for item in self.memory_records
+                    for item in self.index.records
                 ],
                 "retrieval_scores": [
                     {
@@ -119,30 +120,20 @@ class VectorMemoryRuntime:
     def store_memory(self, observation: Observation) -> None:
         text = " ".join([observation.text, *observation.tags])
         tokens = tokenize(text)
-        self.memory_records.append(
-            {
-                "observation": observation,
-                "tokens": tokens,
-                "vector": Counter(tokens),
-            }
-        )
+        self.index.add(observation, tokens)
 
     def retrieve(self, query: str) -> list[dict[str, Any]]:
         query_tokens = tokenize(query)
-        query_vector = Counter(query_tokens)
-        scored = []
-        for record in self.memory_records:
-            overlap = query_tokens & record["tokens"]
-            if not overlap:
-                continue
-            score = cosine(query_vector, record["vector"])
-            scored.append({**record, "score": score, "overlap": overlap})
-        scored.sort(key=lambda item: (-item["score"], item["observation"].turn_id))
-        return scored[: self.top_k]
+        return self.index.search(query_tokens)
 
 
 class DispositionalRuntime:
     name = "dispositional_runtime"
+
+    def __init__(self) -> None:
+        self.drift_detector = CumulativeDriftDetector()
+        self.prompt_assembler = StatelessPromptAssembler()
+        self.state_store = LocalEncryptedStateStore("stateful-runtime-reference")
 
     def evaluate(self, scenario: dict[str, Any]) -> RuntimeDecision:
         state = DispositionalState()
@@ -157,7 +148,7 @@ class DispositionalRuntime:
                 }
             )
 
-            drift_alert = detect_cumulative_goal_drift(state.history)
+            drift_alert = self.drift_detector.detect_creeping_drift(state.history)
             if drift_alert:
                 state.record_alert(drift_alert)
 
@@ -183,6 +174,16 @@ class DispositionalRuntime:
 
         kind = scenario["probe"]["kind"]
         passed = self._passes(kind, state, observations, scenario)
+        conversation_context, associative_context = self._context_layers(observations)
+        assembled_prompt = self.prompt_assembler.assemble(
+            state,
+            conversation_context,
+            associative_context,
+            observations[-1].text,
+        )
+        privacy_save = self.state_store.save(scenario["id"], state)
+        privacy_export = self.state_store.export(scenario["id"])
+        privacy_delete = self.state_store.delete(scenario["id"])
         return RuntimeDecision(
             system=self.name,
             scenario_id=scenario["id"],
@@ -196,6 +197,26 @@ class DispositionalRuntime:
                 "updates": deltas,
                 "trajectory": summarize_trajectory(state.history),
                 "final_state": state.to_dict(),
+                "prompt_assembly": assembled_prompt,
+                "privacy": {
+                    "save": privacy_save,
+                    "export": {
+                        "user_id": privacy_export["user_id"],
+                        "found": privacy_export["found"],
+                        "state_keys": sorted(privacy_export.get("state", {}).keys()),
+                    },
+                    "delete": privacy_delete,
+                },
+                "implemented_components": [
+                    "BoundedAdaptiveDisposition",
+                    "TemporalWeightedDisposition",
+                    "CumulativeDriftDetector",
+                    "RecalibrationScheduler",
+                    "StatelessPromptAssembler",
+                    "LocalEncryptedStateStore",
+                    "InMemoryVectorIndex",
+                    "CausalDAG",
+                ],
             },
             alerts=[asdict(alert) for alert in state.alerts],
         )
@@ -240,6 +261,21 @@ class DispositionalRuntime:
             return "IDENTITY_RESET_REJECTED" in alert_kinds
         return False
 
+    def _context_layers(
+        self,
+        observations: list[Observation],
+    ) -> tuple[list[Observation], list[Observation]]:
+        replay = SessionReplayRuntime()
+        memory = VectorMemoryRuntime()
+        for observation in observations[:-1]:
+            replay.store_turn(observation)
+            memory.store_memory(observation)
+        conversation_context = replay.assemble_replay_context(observations[-1].session_id)
+        associative_context = [
+            item["observation"] for item in memory.retrieve(observations[-1].text)
+        ]
+        return conversation_context, associative_context
+
 
 def load_observations(scenario: dict[str, Any]) -> list[Observation]:
     return [Observation.from_dict(item) for item in scenario["turns"]]
@@ -247,17 +283,6 @@ def load_observations(scenario: dict[str, Any]) -> list[Observation]:
 
 def tokenize(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-z0-9_]+", value.lower()) if len(token) > 2}
-
-
-def cosine(left: Counter[str], right: Counter[str]) -> float:
-    numerator = sum(left[token] * right[token] for token in left.keys() & right.keys())
-    if numerator == 0:
-        return 0.0
-    left_norm = sqrt(sum(value * value for value in left.values()))
-    right_norm = sqrt(sum(value * value for value in right.values()))
-    if left_norm == 0 or right_norm == 0:
-        return 0.0
-    return numerator / (left_norm * right_norm)
 
 
 def verdict_for_pass(kind: str) -> str:

@@ -6,44 +6,65 @@ from typing import Any
 from runtime.state_schema import DriftAlert, Observation
 
 
-def detect_cumulative_goal_drift(history: list[Observation]) -> DriftAlert | None:
-    if len(history) < 3:
+class CumulativeDriftDetector:
+    def __init__(
+        self,
+        engagement_threshold: float = 20.0,
+        truth_seeking_threshold: float = -15.0,
+        reflection_threshold: float = -10.0,
+    ) -> None:
+        self.engagement_threshold = engagement_threshold
+        self.truth_seeking_threshold = truth_seeking_threshold
+        self.reflection_threshold = reflection_threshold
+
+    def detect_creeping_drift(self, history: list[Observation]) -> DriftAlert | None:
+        if len(history) < 3:
+            return None
+
+        first = history[0].signals
+        latest = history[-1].signals
+
+        engagement_change = percent_change(first["engagement"], latest["engagement"])
+        truth_change = percent_change(first["truth_seeking"], latest["truth_seeking"])
+        reflection_change = percent_change(first["reflection"], latest["reflection"])
+
+        if (
+            engagement_change > self.engagement_threshold
+            and truth_change < self.truth_seeking_threshold
+            and reflection_change < self.reflection_threshold
+        ):
+            return DriftAlert(
+                kind="CUMULATIVE_GOAL_DRIFT",
+                severity="HIGH",
+                reason="Engagement increased while truth-seeking and reflection declined.",
+                evidence={
+                    "engagement_change_pct": round(engagement_change, 2),
+                    "truth_seeking_change_pct": round(truth_change, 2),
+                    "reflection_change_pct": round(reflection_change, 2),
+                    "sessions": len({item.session_id for item in history}),
+                    "detector": self.__class__.__name__,
+                },
+            )
+
+        engagement_trend = slope([item.signals["engagement"] for item in history])
+        truth_trend = slope([item.signals["truth_seeking"] for item in history])
+        if engagement_trend > 0.5 and truth_trend < -0.3:
+            return DriftAlert(
+                kind="TREND_DIVERGENCE",
+                severity="MEDIUM",
+                reason="Engagement and truth-seeking are moving in opposite directions.",
+                evidence={
+                    "engagement_trend": round(engagement_trend, 2),
+                    "truth_seeking_trend": round(truth_trend, 2),
+                    "detector": self.__class__.__name__,
+                },
+            )
+
         return None
 
-    first = history[0].signals
-    latest = history[-1].signals
 
-    engagement_change = percent_change(first["engagement"], latest["engagement"])
-    truth_change = percent_change(first["truth_seeking"], latest["truth_seeking"])
-    reflection_change = percent_change(first["reflection"], latest["reflection"])
-
-    if engagement_change > 20 and truth_change < -15 and reflection_change < -10:
-        return DriftAlert(
-            kind="CUMULATIVE_GOAL_DRIFT",
-            severity="HIGH",
-            reason="Engagement increased while truth-seeking and reflection declined.",
-            evidence={
-                "engagement_change_pct": round(engagement_change, 2),
-                "truth_seeking_change_pct": round(truth_change, 2),
-                "reflection_change_pct": round(reflection_change, 2),
-                "sessions": len({item.session_id for item in history}),
-            },
-        )
-
-    engagement_trend = slope([item.signals["engagement"] for item in history])
-    truth_trend = slope([item.signals["truth_seeking"] for item in history])
-    if engagement_trend > 0.5 and truth_trend < -0.3:
-        return DriftAlert(
-            kind="TREND_DIVERGENCE",
-            severity="MEDIUM",
-            reason="Engagement and truth-seeking are moving in opposite directions.",
-            evidence={
-                "engagement_trend": round(engagement_trend, 2),
-                "truth_seeking_trend": round(truth_trend, 2),
-            },
-        )
-
-    return None
+def detect_cumulative_goal_drift(history: list[Observation]) -> DriftAlert | None:
+    return CumulativeDriftDetector().detect_creeping_drift(history)
 
 
 def detect_identity_reset_request(text: str) -> bool:
